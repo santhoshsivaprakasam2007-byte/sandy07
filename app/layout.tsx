@@ -10,6 +10,8 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
+import { Toaster } from "sonner";
+
 export const metadata: Metadata = {
   title: "Academic Productivity Pro",
   description: "Cognitive Clarity | Study Planner and Dashboard",
@@ -30,6 +32,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-background text-on-surface">
         {children}
+        <Toaster position="top-center" />
       </body>
     </html>
   );

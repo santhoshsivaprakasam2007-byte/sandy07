@@ -130,7 +130,8 @@ export default function Planner() {
     }
 
     if (error) {
-      toast.error("Failed to save task");
+      console.error("SUPABASE ERROR:", error);
+      toast.error(`Error saving task: ${error.message || "Unknown error"}. Did you run the SQL migration script?`);
     } else {
       toast.success(editingTask ? "Task updated" : "Task created");
       setIsModalOpen(false);
