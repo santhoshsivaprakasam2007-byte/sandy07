@@ -99,17 +99,6 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {isBrandNew ? (
-        <div className="glass-card p-12 rounded-xl text-center flex flex-col items-center justify-center border-dashed border-2 border-outline-variant">
-          <span className="material-symbols-outlined text-6xl text-primary/50 mb-4">rocket_launch</span>
-          <h2 className="text-2xl font-bold mb-2">Welcome to your Productivity Hub</h2>
-          <p className="text-muted-foreground mb-6 max-w-md">Start your first focus session or create a task to begin generating your personalized analytics.</p>
-          <Link href="/timer">
-            <Button size="lg">Start First Focus Session</Button>
-          </Link>
-        </div>
-      ) : (
-        <>
           {/* Metrics Row */}
           <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
             <Card>
@@ -203,8 +192,6 @@ export default function Dashboard() {
             </Card>
 
           </div>
-        </>
-      )}
     </div>
   );
 }
