@@ -370,7 +370,10 @@ export default function Planner() {
       {/* Task Modal Overlay */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-background w-[95vw] sm:w-[500px] max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200">
+          <div 
+            className="bg-background max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200"
+            style={{ width: "95vw", maxWidth: "550px" }}
+          >
             
             <div className="flex justify-between items-center p-5 border-b border-outline-variant/20 sticky top-0 bg-surface z-10">
               <h2 className="text-lg font-bold">{editingTask ? "Edit Task" : "New Task"}</h2>
