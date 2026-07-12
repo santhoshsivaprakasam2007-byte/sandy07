@@ -1,7 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useStudyData, formatMinutes } from "@/lib/useStudyData";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // ── Mini bar chart (CSS only) ─────────────────────────────────────────────────
 
@@ -34,7 +37,7 @@ function BarChart({
                 style={{ height: `${Math.max(pct, bar.minutes > 0 ? 8 : 3)}%` }}
               />
             </div>
-            <span className="text-[10px] text-on-surface-variant">{bar.label}</span>
+            <span className="text-[10px] text-on-surface-variant truncate w-full text-center">{bar.label}</span>
           </div>
         );
       })}
@@ -139,10 +142,10 @@ export default function Stats() {
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div>
         <h1 className="text-2xl font-bold text-on-surface tracking-tight">
-          Statistics
+          Statistics & Analytics
         </h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Your complete study analytics
+          Deep dive into your study habits and productivity trends.
         </p>
       </div>
 
@@ -156,10 +159,10 @@ export default function Stats() {
             sub: "all time",
           },
           {
-            label: "This Week",
-            value: formatMinutes(derived.weekMinutes),
-            icon: "date_range",
-            sub: "last 7 days",
+            label: "Productivity Score",
+            value: `${derived.productivityScore}/100`,
+            icon: "speed",
+            sub: "based on daily goal",
           },
           {
             label: "This Month",
@@ -192,9 +195,10 @@ export default function Stats() {
         ))}
       </div>
 
-      {/* ── Streak + Velocity ────────────────────────────────────────── */}
+      {/* ── Streak & Insights ────────────────────────────────────────── */}
       <div className="grid md:grid-cols-12 gap-4">
-        <div className="md:col-span-8 glass-card p-6 rounded-xl border border-outline-variant/30 relative overflow-hidden">
+        {/* Consistency Engine */}
+        <div className="md:col-span-6 lg:col-span-4 glass-card p-6 rounded-xl border border-outline-variant/30 relative overflow-hidden">
           <div className="absolute -right-12 -top-12 w-48 h-48 bg-primary/5 rounded-full blur-3xl" />
           <div className="z-10 relative">
             <p className="text-xs text-primary uppercase tracking-widest font-semibold mb-2">
@@ -216,7 +220,7 @@ export default function Stats() {
                 local_fire_department
               </span>
               <p className="text-sm text-on-surface-variant">
-                Longest streak:{" "}
+                Longest:{" "}
                 <span className="font-bold text-on-surface">
                   {derived.longestStreak} days
                 </span>
@@ -226,7 +230,37 @@ export default function Stats() {
           </div>
         </div>
 
-        <div className="md:col-span-4 bg-primary text-white p-6 rounded-xl shadow-lg flex flex-col gap-4">
+        {/* AI Insights Card */}
+        <div className="md:col-span-6 lg:col-span-4 glass-card p-6 rounded-xl border border-outline-variant/30 bg-secondary/5 flex flex-col gap-4">
+          <p className="text-xs text-secondary uppercase tracking-widest font-semibold mb-2 flex items-center gap-2">
+            <span className="material-symbols-outlined text-[16px]">psychology</span> Insights
+          </p>
+          
+          <div className="space-y-4 flex-grow">
+            <div>
+              <div className="text-xs text-on-surface-variant mb-1 uppercase font-medium">Best Study Day</div>
+              <div className="text-xl font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">emoji_events</span> {derived.bestStudyDay}
+              </div>
+            </div>
+            <div className="border-t border-outline-variant/20 pt-3">
+              <div className="text-xs text-on-surface-variant mb-1 uppercase font-medium">Most Productive Hour</div>
+              <div className="text-xl font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">bolt</span> {derived.mostProductiveHour}
+              </div>
+            </div>
+            <div className="border-t border-outline-variant/20 pt-3">
+              <div className="text-xs text-on-surface-variant mb-1 uppercase font-medium">Task Completion Rate</div>
+              <div className="text-xl font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">task_alt</span> 
+                {derived.totalTasks > 0 ? Math.round((derived.completedTasks / derived.totalTasks) * 100) : 0}%
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Session Stats */}
+        <div className="md:col-span-12 lg:col-span-4 bg-primary text-white p-6 rounded-xl shadow-lg flex flex-col gap-4">
           <div>
             <h3 className="font-semibold text-sm opacity-80 uppercase tracking-wide">
               Session Stats
@@ -253,33 +287,30 @@ export default function Stats() {
         </div>
       </div>
 
-      {/* ── Charts ───────────────────────────────────────────────────── */}
-      <div className="grid md:grid-cols-2 gap-4">
-        {/* Daily (7 days) */}
-        <div className="glass-card p-5 rounded-xl border border-outline-variant/30">
-          <h3 className="font-semibold text-on-surface mb-1">
-            Daily Focus (Last 7 Days)
-          </h3>
-          <p className="text-xs text-on-surface-variant mb-4">
-            Minutes of focus per day
-          </p>
-          <BarChart data={derived.last7Days} colorClass="bg-primary" />
-        </div>
-
-        {/* Weekly (4 weeks) */}
-        <div className="glass-card p-5 rounded-xl border border-outline-variant/30">
-          <h3 className="font-semibold text-on-surface mb-1">
-            Weekly Comparison
-          </h3>
-          <p className="text-xs text-on-surface-variant mb-4">
-            Minutes of focus per week
-          </p>
-          <BarChart
-            data={derived.last4Weeks}
-            colorClass="bg-secondary"
-          />
-        </div>
-      </div>
+      {/* ── Charts with Tabs ─────────────────────────────────────────────── */}
+      <Card className="border-outline-variant/30">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg">Productivity Trends</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="daily" className="w-full">
+            <TabsList className="mb-4 bg-surface-container">
+              <TabsTrigger value="daily">Daily (Last 7 Days)</TabsTrigger>
+              <TabsTrigger value="weekly">Weekly (Last 4 Weeks)</TabsTrigger>
+              <TabsTrigger value="monthly">Monthly (Last 12 Months)</TabsTrigger>
+            </TabsList>
+            <TabsContent value="daily" className="animate-in fade-in">
+              <BarChart data={derived.last7Days} colorClass="bg-primary" />
+            </TabsContent>
+            <TabsContent value="weekly" className="animate-in fade-in">
+              <BarChart data={derived.last4Weeks} colorClass="bg-secondary" />
+            </TabsContent>
+            <TabsContent value="monthly" className="animate-in fade-in">
+              <BarChart data={derived.last12Months} colorClass="bg-[#8127cf]" />
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
 
       {/* ── Recent Sessions ──────────────────────────────────────────── */}
       <div className="glass-card rounded-xl border border-outline-variant/30 p-5">

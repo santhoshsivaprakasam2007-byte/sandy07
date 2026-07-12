@@ -17,17 +17,32 @@ export interface StudySession {
   created_at: string;
 }
 
+export interface Profile {
+  id: string;
+  full_name: string;
+  avatar_url: string;
+  college: string | null;
+  department: string | null;
+  semester: number | null;
+  daily_goal_minutes: number;
+  theme: string;
+  timer_settings: any;
+}
+
 export interface Task {
   id: number;
   user_id: string;
   title: string;
   subject: string;
+  category: string | null;
+  notes: string | null;
   time_range: string;
   priority: string;
   completed: boolean;
   study_goal_minutes: number;
   study_minutes: number;
   due_date: string | null;
+  due_time: string | null;
   created_at: string;
 }
 
@@ -49,6 +64,10 @@ export interface DerivedStats {
   totalTasks: number;
   completedTasks: number;
   pendingTasks: number;
+  bestStudyDay: string;
+  mostProductiveHour: string;
+  productivityScore: number;
+  last12Months: { label: string; minutes: number }[];
 }
 
 export function formatMinutes(minutes: number): string {
@@ -169,6 +188,46 @@ function derivedStatsFromData(sessions: StudySession[], tasks: Task[]): DerivedS
   const { current, longest } = calculateStreak(sessions);
   const completedTasksCount = tasks.filter((t) => t.completed).length;
 
+  // Best Study Day (Day of week with most total focus time)
+  const daysMap = { "Sun": 0, "Mon": 0, "Tue": 0, "Wed": 0, "Thu": 0, "Fri": 0, "Sat": 0 };
+  focusSessions.forEach(s => {
+    const d = new Date(s.created_at);
+    const dayLabel = format(d, "EEE") as keyof typeof daysMap;
+    daysMap[dayLabel] += (s.duration_minutes || 0);
+  });
+  let bestStudyDay = "N/A";
+  let maxDayMins = 0;
+  Object.entries(daysMap).forEach(([day, mins]) => {
+    if (mins > maxDayMins) { maxDayMins = mins; bestStudyDay = day; }
+  });
+
+  // Most Productive Hour
+  const hoursMap: Record<number, number> = {};
+  focusSessions.forEach(s => {
+    const h = new Date(s.created_at).getHours();
+    hoursMap[h] = (hoursMap[h] || 0) + (s.duration_minutes || 0);
+  });
+  let bestHour = -1;
+  let maxHourMins = 0;
+  Object.entries(hoursMap).forEach(([h, mins]) => {
+    if (mins > maxHourMins) { maxHourMins = mins; bestHour = parseInt(h); }
+  });
+  const mostProductiveHour = bestHour >= 0 ? `${bestHour === 0 ? 12 : bestHour > 12 ? bestHour - 12 : bestHour}${bestHour >= 12 ? 'PM' : 'AM'}` : "N/A";
+
+  // Productivity Score (0-100)
+  // Baseline: 4 hours a day = 240 mins.
+  const productivityScore = Math.min(100, Math.round((todayMinutes / 240) * 100));
+
+  // Last 12 Months
+  const last12Months = Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const mins = focusSessions.filter(s => {
+      const sd = new Date(s.created_at);
+      return sd.getMonth() === d.getMonth() && sd.getFullYear() === d.getFullYear();
+    }).reduce((acc, s) => acc + (s.duration_minutes || 0), 0);
+    return { label: format(d, "MMM"), minutes: mins };
+  }).reverse();
+
   return {
     totalFocusMinutes,
     totalFocusHours: totalFocusMinutes / 60,
@@ -187,6 +246,10 @@ function derivedStatsFromData(sessions: StudySession[], tasks: Task[]): DerivedS
     totalTasks: tasks.length,
     completedTasks: completedTasksCount,
     pendingTasks: tasks.length - completedTasksCount,
+    bestStudyDay,
+    mostProductiveHour,
+    productivityScore,
+    last12Months,
   };
 }
 
@@ -213,6 +276,10 @@ export function useStudyData() {
     totalTasks: 0,
     completedTasks: 0,
     pendingTasks: 0,
+    bestStudyDay: "N/A",
+    mostProductiveHour: "N/A",
+    productivityScore: 0,
+    last12Months: [],
   });
   
   const [isLoading, setIsLoading] = useState(true);

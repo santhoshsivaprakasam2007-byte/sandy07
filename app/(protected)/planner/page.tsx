@@ -1,62 +1,161 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
-import { useStudyData, formatMinutes } from "@/lib/useStudyData";
+import { useStudyData, formatMinutes, type Task } from "@/lib/useStudyData";
 import { createClient } from "@/utils/supabase/client";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export default function Planner() {
   const { tasks, isLoading, refresh, userId } = useStudyData();
   const supabase = createClient();
 
-  const [isAdding, setIsAdding] = useState(false);
-  const [newTask, setNewTask] = useState({
+  const [search, setSearch] = useState("");
+  const [filterCategory, setFilterCategory] = useState("All");
+  const [sortBy, setSortBy] = useState("due_date_asc");
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  
+  // Form State
+  const [formData, setFormData] = useState({
     title: "",
     subject: "",
-    study_goal_minutes: 0,
+    category: "",
     priority: "Med Priority",
+    study_goal_minutes: 0,
+    due_date: "",
+    due_time: "",
+    notes: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  const pending = tasks.filter((t) => !t.completed);
-  const completed = tasks.filter((t) => t.completed);
+  // ── Derived Data ────────────────────────────────────────────────────────
+  
+  const categories = useMemo(() => {
+    const cats = new Set(tasks.map(t => t.category).filter(Boolean));
+    return ["All", ...Array.from(cats)] as string[];
+  }, [tasks]);
 
-  // ── Toggle complete ────────────────────────────────────────────
+  const filteredAndSortedTasks = useMemo(() => {
+    let result = [...tasks];
+
+    // Filter by Category
+    if (filterCategory !== "All") {
+      result = result.filter(t => t.category === filterCategory);
+    }
+
+    // Filter by Search
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(t => 
+        t.title.toLowerCase().includes(q) || 
+        (t.subject && t.subject.toLowerCase().includes(q)) ||
+        (t.notes && t.notes.toLowerCase().includes(q))
+      );
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      if (sortBy === "due_date_asc" || sortBy === "due_date_desc") {
+        const da = a.due_date ? new Date(`${a.due_date}T${a.due_time || "23:59:00"}`).getTime() : Infinity;
+        const db = b.due_date ? new Date(`${b.due_date}T${b.due_time || "23:59:00"}`).getTime() : Infinity;
+        return sortBy === "due_date_asc" ? da - db : db - da;
+      }
+      if (sortBy === "priority") {
+        const pMap: any = { "High Priority": 1, "Med Priority": 2, "Low Priority": 3 };
+        return (pMap[a.priority] || 4) - (pMap[b.priority] || 4);
+      }
+      // created_desc
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+
+    return result;
+  }, [tasks, search, filterCategory, sortBy]);
+
+  const pending = filteredAndSortedTasks.filter((t) => !t.completed);
+  const completed = filteredAndSortedTasks.filter((t) => t.completed);
+
+  // ── Actions ─────────────────────────────────────────────────────────────
+
+  const openNewTaskModal = () => {
+    setEditingTask(null);
+    setFormData({ title: "", subject: "", category: "", priority: "Med Priority", study_goal_minutes: 0, due_date: "", due_time: "", notes: "" });
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (task: Task) => {
+    setEditingTask(task);
+    setFormData({
+      title: task.title,
+      subject: task.subject || "",
+      category: task.category || "",
+      priority: task.priority || "Med Priority",
+      study_goal_minutes: task.study_goal_minutes || 0,
+      due_date: task.due_date || "",
+      due_time: task.due_time || "",
+      notes: task.notes || "",
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSaveTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.title.trim() || !userId) return;
+    setIsSubmitting(true);
+
+    const payload = {
+      user_id: userId,
+      title: formData.title,
+      subject: formData.subject || null,
+      category: formData.category || null,
+      priority: formData.priority,
+      study_goal_minutes: formData.study_goal_minutes || 0,
+      due_date: formData.due_date || null,
+      due_time: formData.due_time || null,
+      notes: formData.notes || null,
+    };
+
+    let error;
+    if (editingTask) {
+      const { error: err } = await supabase.from("tasks").update(payload).eq("id", editingTask.id);
+      error = err;
+    } else {
+      const { error: err } = await supabase.from("tasks").insert([payload]);
+      error = err;
+    }
+
+    if (error) {
+      toast.error("Failed to save task");
+    } else {
+      toast.success(editingTask ? "Task updated" : "Task created");
+      setIsModalOpen(false);
+      refresh();
+    }
+    setIsSubmitting(false);
+  };
+
   const toggleTask = async (id: number, current: boolean) => {
-    await supabase
-      .from("tasks")
-      .update({ completed: !current })
-      .eq("id", id);
+    await supabase.from("tasks").update({ completed: !current }).eq("id", id);
     refresh();
   };
 
-  // ── Delete task ────────────────────────────────────────────────
   const deleteTask = async (id: number) => {
     setDeletingId(id);
     await supabase.from("tasks").delete().eq("id", id);
+    toast.success("Task deleted");
     refresh();
     setDeletingId(null);
   };
 
-  // ── Add task ───────────────────────────────────────────────────
-  const handleAddTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTask.title.trim() || !userId) return;
-    setIsSubmitting(true);
-    await supabase.from("tasks").insert([{
-      user_id: userId,
-      title: newTask.title,
-      subject: newTask.subject || "General",
-      study_goal_minutes: newTask.study_goal_minutes || 0,
-      priority: newTask.priority,
-      completed: false,
-      study_minutes: 0,
-    }]);
-    setNewTask({ title: "", subject: "", study_goal_minutes: 0, priority: "Med Priority" });
-    setIsAdding(false);
-    setIsSubmitting(false);
-    refresh();
+  const priorityColor = (p: string) => {
+    if (p?.includes("High")) return "text-red-500 bg-red-500/10 border-red-500/20";
+    if (p?.includes("Low")) return "text-blue-500 bg-blue-500/10 border-blue-500/20";
+    return "text-yellow-600 bg-yellow-500/10 border-yellow-500/20";
   };
 
   if (isLoading) {
@@ -67,18 +166,12 @@ export default function Planner() {
     );
   }
 
-  const priorityColor = (p: string) => {
-    if (p?.includes("High")) return "text-red-500 bg-red-500/10";
-    if (p?.includes("Low")) return "text-blue-500 bg-blue-500/10";
-    return "text-yellow-600 bg-yellow-500/10";
-  };
+  // ── Components ──────────────────────────────────────────────────────────
 
-  // ── Task Card ──────────────────────────────────────────────────
-  const TaskCard = ({ task }: { task: any }) => {
-    const progress =
-      task.study_goal_minutes > 0
-        ? Math.min(100, Math.round((task.study_minutes / task.study_goal_minutes) * 100))
-        : 0;
+  const TaskCard = ({ task }: { task: Task }) => {
+    const progress = task.study_goal_minutes > 0
+      ? Math.min(100, Math.round((task.study_minutes / task.study_goal_minutes) * 100))
+      : 0;
 
     return (
       <div
@@ -88,79 +181,77 @@ export default function Planner() {
             : "border-primary/20 shadow-sm hover:shadow-md hover:border-primary/40"
         }`}
       >
-        {/* Checkbox */}
         <button
           onClick={() => toggleTask(task.id, task.completed)}
-          className={`mt-0.5 w-6 h-6 rounded-lg border-2 flex items-center justify-center shrink-0 transition-all ${
+          className={`mt-1 w-6 h-6 rounded-lg border-2 flex items-center justify-center shrink-0 transition-all ${
             task.completed
               ? "border-primary bg-primary text-white"
               : "border-outline-variant hover:border-primary"
           }`}
-          aria-label={task.completed ? "Mark incomplete" : "Mark complete"}
         >
-          {task.completed && (
-            <span className="material-symbols-outlined text-[14px]">check</span>
-          )}
+          {task.completed && <span className="material-symbols-outlined text-[14px]">check</span>}
         </button>
 
-        {/* Content */}
         <div className="flex-grow min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h4
-              className={`font-medium text-sm ${
-                task.completed
-                  ? "line-through text-on-surface-variant"
-                  : "text-on-surface"
-              }`}
-            >
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <h4 className={`font-medium text-base ${task.completed ? "line-through text-on-surface-variant" : "text-on-surface"}`}>
               {task.title}
             </h4>
             {task.priority && (
-              <span
-                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${priorityColor(
-                  task.priority
-                )}`}
-              >
-                {task.priority}
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${priorityColor(task.priority)}`}>
+                {task.priority.replace(" Priority", "")}
+              </span>
+            )}
+            {task.category && (
+              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-secondary/10 text-secondary border border-secondary/20">
+                {task.category}
               </span>
             )}
           </div>
 
-          {task.subject && task.subject !== "General" && (
-            <p className="text-xs text-on-surface-variant mt-0.5">{task.subject}</p>
+          {(task.subject || task.due_date || task.notes) && (
+            <div className="flex flex-col gap-1 mt-2 mb-3">
+              {task.subject && (
+                <div className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+                  <span className="material-symbols-outlined text-[14px]">book</span> {task.subject}
+                </div>
+              )}
+              {task.due_date && (
+                <div className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+                  <span className="material-symbols-outlined text-[14px]">event</span>
+                  {new Date(task.due_date).toLocaleDateString()} {task.due_time && `at ${task.due_time}`}
+                </div>
+              )}
+              {task.notes && (
+                <div className="text-xs text-on-surface-variant mt-1 border-l-2 border-outline-variant/30 pl-2 italic truncate">
+                  {task.notes}
+                </div>
+              )}
+            </div>
           )}
 
-          {/* Study progress */}
           {task.study_goal_minutes > 0 && (
-            <div className="mt-2">
-              <div className="flex justify-between text-[10px] text-on-surface-variant mb-1">
-                <span>
-                  {formatMinutes(task.study_minutes)} /{" "}
-                  {formatMinutes(task.study_goal_minutes)}
-                </span>
+            <div className="mt-3">
+              <div className="flex justify-between text-[10px] text-on-surface-variant mb-1 font-medium">
+                <span>{formatMinutes(task.study_minutes)} / {formatMinutes(task.study_goal_minutes)}</span>
                 <span>{progress}%</span>
               </div>
-              <div className="h-1.5 rounded-full bg-surface-container-high">
+              <div className="h-2 rounded-full bg-surface-container-high overflow-hidden">
                 <div
-                  className={`h-1.5 rounded-full transition-all ${
-                    progress >= 100 ? "bg-green-500" : "bg-primary"
-                  }`}
+                  className={`h-full transition-all ${progress >= 100 ? "bg-green-500" : "bg-primary"}`}
                   style={{ width: `${progress}%` }}
                 />
               </div>
             </div>
           )}
-
           {task.study_minutes > 0 && task.study_goal_minutes === 0 && (
-            <p className="text-[10px] text-on-surface-variant mt-1">
+            <p className="text-[10px] font-medium text-primary mt-2">
               {formatMinutes(task.study_minutes)} studied
             </p>
           )}
         </div>
 
-        {/* Actions */}
-        <div className="flex gap-1 shrink-0">
-          {/* Start timer with this task */}
+        <div className="flex flex-col sm:flex-row gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
           {!task.completed && (
             <Link
               href="/timer"
@@ -170,6 +261,13 @@ export default function Planner() {
               <span className="material-symbols-outlined text-[18px]">timer</span>
             </Link>
           )}
+          <button
+            onClick={() => openEditModal(task)}
+            title="Edit task"
+            className="p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-primary/10 transition-colors"
+          >
+            <span className="material-symbols-outlined text-[18px]">edit</span>
+          </button>
           <button
             onClick={() => deleteTask(task.id)}
             disabled={deletingId === task.id}
@@ -186,177 +284,172 @@ export default function Planner() {
   };
 
   return (
-    <div className="space-y-6 pb-10">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 pb-20 relative min-h-[80vh]">
+      
+      {/* Header & Controls */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-end justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-on-surface tracking-tight">
-            Study Planner
-          </h1>
-          <p className="text-sm text-on-surface-variant mt-0.5">
-            Stay on track with your academic momentum
-          </p>
+          <h1 className="text-2xl font-bold text-on-surface tracking-tight">Study Planner</h1>
+          <p className="text-sm text-on-surface-variant mt-0.5">Manage tasks and track your academic progress</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-primary bg-primary/10 px-3 py-1 rounded-full">
-            {pending.length} remaining
-          </span>
-          <button
-            onClick={() => setIsAdding(true)}
-            className="flex items-center gap-1 px-4 py-2 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 active:scale-95 transition-all shadow-md shadow-primary/20"
-          >
-            <span className="material-symbols-outlined text-[18px]">add</span>
-            Add Task
-          </button>
-        </div>
+        <Button onClick={openNewTaskModal} className="gap-2 shadow-lg shadow-primary/20 rounded-xl">
+          <span className="material-symbols-outlined text-[18px]">add_task</span> Add Task
+        </Button>
       </div>
 
-      {/* Add Task Form */}
-      {isAdding && (
-        <form
-          onSubmit={handleAddTask}
-          className="glass-card p-5 rounded-xl border border-primary/40 shadow-md space-y-3 animate-in slide-in-from-top-2 duration-200"
-        >
-          <h3 className="font-semibold text-on-surface text-sm">New Task</h3>
-          <div className="grid md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-on-surface-variant mb-1 block">
-                Task Title *
-              </label>
-              <input
-                type="text"
-                autoFocus
-                required
-                placeholder="What do you need to study?"
-                value={newTask.title}
-                onChange={(e) =>
-                  setNewTask((p) => ({ ...p, title: e.target.value }))
-                }
-                className="w-full bg-surface-container border border-outline-variant rounded-lg px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-on-surface-variant mb-1 block">
-                Subject
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Mathematics, Physics"
-                value={newTask.subject}
-                onChange={(e) =>
-                  setNewTask((p) => ({ ...p, subject: e.target.value }))
-                }
-                className="w-full bg-surface-container border border-outline-variant rounded-lg px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-on-surface-variant mb-1 block">
-                Study Goal (minutes, optional)
-              </label>
-              <input
-                type="number"
-                min={0}
-                placeholder="e.g. 60"
-                value={newTask.study_goal_minutes || ""}
-                onChange={(e) =>
-                  setNewTask((p) => ({
-                    ...p,
-                    study_goal_minutes: parseInt(e.target.value) || 0,
-                  }))
-                }
-                className="w-full bg-surface-container border border-outline-variant rounded-lg px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-on-surface-variant mb-1 block">
-                Priority
-              </label>
-              <select
-                value={newTask.priority}
-                onChange={(e) =>
-                  setNewTask((p) => ({ ...p, priority: e.target.value }))
-                }
-                className="w-full bg-surface-container border border-outline-variant rounded-lg px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-              >
-                <option>High Priority</option>
-                <option>Med Priority</option>
-                <option>Low Priority</option>
-              </select>
-            </div>
+      {/* Toolbar: Search, Filter, Sort */}
+      {tasks.length > 0 && (
+        <div className="flex flex-col sm:flex-row gap-3 bg-surface-container-low p-3 rounded-xl border border-outline-variant/30">
+          <div className="relative flex-grow">
+            <span className="material-symbols-outlined absolute left-3 top-2.5 text-on-surface-variant text-[20px]">search</span>
+            <Input 
+              placeholder="Search tasks, subjects, notes..." 
+              value={search} onChange={(e) => setSearch(e.target.value)}
+              className="pl-10 bg-surface-container"
+            />
           </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => setIsAdding(false)}
-              className="px-4 py-2 text-on-surface-variant hover:bg-surface-container rounded-lg text-sm"
+          <div className="flex gap-2">
+            <select 
+              value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+              className="bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm outline-none"
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-5 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-60"
+              {categories.map(c => <option key={c} value={c}>{c === "All" ? "All Categories" : c}</option>)}
+            </select>
+            <select 
+              value={sortBy} onChange={e => setSortBy(e.target.value)}
+              className="bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm outline-none"
             >
-              {isSubmitting ? "Adding…" : "Add Task"}
-            </button>
+              <option value="due_date_asc">Due Date (Earliest)</option>
+              <option value="due_date_desc">Due Date (Latest)</option>
+              <option value="priority">Priority (High to Low)</option>
+              <option value="created_desc">Recently Added</option>
+            </select>
           </div>
-        </form>
+        </div>
       )}
 
-      {/* Empty state */}
-      {tasks.length === 0 && !isAdding && (
-        <div className="w-full border-2 border-dashed border-outline-variant rounded-xl p-12 flex flex-col items-center justify-center text-center opacity-70">
-          <span className="material-symbols-outlined text-5xl mb-3 text-primary/50">
-            event_note
-          </span>
-          <h3 className="font-semibold text-on-surface mb-2">
-            Your planner is empty
-          </h3>
-          <p className="text-sm text-on-surface-variant mb-5 max-w-sm">
-            Create your first study plan to start tracking your progress!
+      {/* Empty States */}
+      {tasks.length === 0 && (
+        <div className="w-full border-2 border-dashed border-outline-variant rounded-2xl p-12 flex flex-col items-center justify-center text-center opacity-80 mt-10">
+          <span className="material-symbols-outlined text-6xl mb-4 text-primary/40">assignment</span>
+          <h3 className="text-xl font-bold text-on-surface mb-2">Your planner is empty</h3>
+          <p className="text-sm text-on-surface-variant mb-6 max-w-sm">
+            Create your first study task to start organizing your academic life.
           </p>
-          <button
-            onClick={() => setIsAdding(true)}
-            className="bg-primary text-white px-6 py-2.5 rounded-full text-sm font-semibold hover:bg-primary/90 transition-colors"
-          >
-            Create your first task
-          </button>
+          <Button onClick={openNewTaskModal} size="lg" className="rounded-full">Create Task</Button>
+        </div>
+      )}
+
+      {tasks.length > 0 && pending.length === 0 && completed.length === 0 && (
+        <div className="text-center py-10 opacity-70">
+          <span className="material-symbols-outlined text-4xl mb-2">search_off</span>
+          <p>No tasks match your search filters.</p>
         </div>
       )}
 
       {/* Pending Tasks */}
       {pending.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-on-surface-variant uppercase tracking-wide">
-            Pending ({pending.length})
+          <h2 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider pl-1">
+            Pending Tasks ({pending.length})
           </h2>
-          {pending.map((task) => (
-            <TaskCard key={task.id} task={task} />
-          ))}
+          {pending.map((task) => <TaskCard key={task.id} task={task} />)}
         </div>
       )}
 
       {/* Completed Tasks */}
       {completed.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-on-surface-variant uppercase tracking-wide">
+        <div className="space-y-3 mt-8">
+          <h2 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider pl-1">
             Completed ({completed.length})
           </h2>
-          {completed.map((task) => (
-            <TaskCard key={task.id} task={task} />
-          ))}
+          {completed.map((task) => <TaskCard key={task.id} task={task} />)}
         </div>
       )}
 
-      {/* FAB on mobile */}
-      {!isAdding && tasks.length > 0 && (
-        <button
-          onClick={() => setIsAdding(true)}
-          className="fixed bottom-24 right-6 w-14 h-14 rounded-2xl bg-primary text-white shadow-xl flex items-center justify-center hover:scale-110 active:scale-90 transition-all z-50 md:hidden"
-        >
-          <span className="material-symbols-outlined text-[28px]">add</span>
-        </button>
+      {/* Task Modal Overlay */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-surface w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200">
+            
+            <div className="flex justify-between items-center p-5 border-b border-outline-variant/20 sticky top-0 bg-surface z-10">
+              <h2 className="text-lg font-bold">{editingTask ? "Edit Task" : "New Task"}</h2>
+              <button onClick={() => setIsModalOpen(false)} className="p-1 rounded-full hover:bg-surface-container">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <form onSubmit={handleSaveTask} className="p-5 space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-on-surface-variant uppercase">Task Title *</label>
+                <Input required autoFocus placeholder="Read Chapter 4..." value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="text-base py-6" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase">Subject</label>
+                  <Input placeholder="e.g. History 101" value={formData.subject} onChange={e => setFormData(p => ({ ...p, subject: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase">Category</label>
+                  <Input placeholder="e.g. Reading, Exam" value={formData.category} onChange={e => setFormData(p => ({ ...p, category: e.target.value }))} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase">Priority</label>
+                  <select value={formData.priority} onChange={e => setFormData(p => ({ ...p, priority: e.target.value }))} className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm outline-none">
+                    <option>High Priority</option>
+                    <option>Med Priority</option>
+                    <option>Low Priority</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase">Study Goal (Minutes)</label>
+                  <Input type="number" min={0} placeholder="e.g. 120" value={formData.study_goal_minutes || ""} onChange={e => setFormData(p => ({ ...p, study_goal_minutes: parseInt(e.target.value) || 0 }))} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase">Due Date</label>
+                  <Input type="date" value={formData.due_date} onChange={e => setFormData(p => ({ ...p, due_date: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase">Due Time</label>
+                  <Input type="time" value={formData.due_time} onChange={e => setFormData(p => ({ ...p, due_time: e.target.value }))} />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-on-surface-variant uppercase">Notes</label>
+                <textarea 
+                  rows={3}
+                  placeholder="Any additional details or context..."
+                  value={formData.notes} 
+                  onChange={e => setFormData(p => ({ ...p, notes: e.target.value }))}
+                  className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm outline-none resize-y"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-outline-variant/20">
+                <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Saving..." : "Save Task"}</Button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
+
+      {/* FAB for Mobile */}
+      <button
+        onClick={openNewTaskModal}
+        className="md:hidden fixed bottom-24 right-6 w-14 h-14 rounded-2xl bg-primary text-white shadow-xl flex items-center justify-center hover:scale-110 active:scale-90 transition-all z-40"
+      >
+        <span className="material-symbols-outlined text-[28px]">add</span>
+      </button>
+
     </div>
   );
 }

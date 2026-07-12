@@ -9,13 +9,12 @@ import { Input } from "../../../components/ui/input";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from "../../../components/ui/form";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
 import { createClient } from "../../../utils/supabase/client";
 import { toast } from "sonner";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
@@ -23,6 +22,10 @@ import type { User as SupabaseUser } from "@supabase/supabase-js";
 const profileFormSchema = z.object({
   fullName: z.string().min(2, { message: "Name must be at least 2 characters." }),
   email: z.string().email(),
+  college: z.string().optional(),
+  department: z.string().optional(),
+  semester: z.string().optional(),
+  dailyGoalMinutes: z.string().optional(),
 });
 
 const passwordFormSchema = z.object({
@@ -44,6 +47,10 @@ export default function Profile() {
     defaultValues: {
       fullName: "",
       email: "",
+      college: "",
+      department: "",
+      semester: "",
+      dailyGoalMinutes: "120",
     },
   });
 
@@ -60,9 +67,21 @@ export default function Profile() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setUser(user);
+        
+        // Fetch extended profile data
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+
         profileForm.reset({
-          fullName: user.user_metadata?.full_name || "",
+          fullName: user.user_metadata?.full_name || profile?.full_name || "",
           email: user.email || "",
+          college: profile?.college || "",
+          department: profile?.department || "",
+          semester: profile?.semester ? profile.semester.toString() : "",
+          dailyGoalMinutes: profile?.daily_goal_minutes ? profile.daily_goal_minutes.toString() : "120",
         });
       }
     }
@@ -71,16 +90,39 @@ export default function Profile() {
 
   async function onProfileSubmit(values: z.infer<typeof profileFormSchema>) {
     setIsUpdatingProfile(true);
-    const { error } = await supabase.auth.updateUser({
+    
+    // Update Auth (Email and Name)
+    const { error: authError } = await supabase.auth.updateUser({
       email: values.email,
       data: { full_name: values.fullName }
     });
 
-    if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success("Profile updated successfully");
+    if (authError) {
+      toast.error(authError.message);
+      setIsUpdatingProfile(false);
+      return;
     }
+
+    // Update Profile Table
+    if (user) {
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .upsert({
+          id: user.id,
+          full_name: values.fullName,
+          college: values.college || null,
+          department: values.department || null,
+          semester: values.semester ? parseInt(values.semester) : null,
+          daily_goal_minutes: values.dailyGoalMinutes ? parseInt(values.dailyGoalMinutes) : 120,
+        }, { onConflict: "id" });
+
+      if (profileError) {
+        toast.error("Failed to save extended profile details.");
+      } else {
+        toast.success("Profile updated successfully");
+      }
+    }
+    
     setIsUpdatingProfile(false);
   }
 
@@ -100,53 +142,107 @@ export default function Profile() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl pb-12">
       <div>
         <h2 className="text-3xl font-bold tracking-tight">Profile</h2>
         <p className="text-muted-foreground mt-1">
-          Manage your account settings and preferences.
+          Manage your account settings, academic details, and goals.
         </p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Personal Information */}
-        <Card>
+        {/* Personal & Academic Information */}
+        <Card className="md:col-span-2">
           <CardHeader>
             <CardTitle>Personal Information</CardTitle>
             <CardDescription>
-              Update your name and email address. Note: Changing your email will require verification.
+              Update your details. Changing your email will require verification.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Form {...profileForm}>
               <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-4">
-                <FormField
-                  control={profileForm.control}
-                  name="fullName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Full Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Your Name" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={profileForm.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email Address</FormLabel>
-                      <FormControl>
-                        <Input type="email" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button type="submit" disabled={isUpdatingProfile}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={profileForm.control}
+                    name="fullName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Full Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Your Name" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={profileForm.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email Address</FormLabel>
+                        <FormControl>
+                          <Input type="email" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={profileForm.control}
+                    name="college"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>College / University</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g. Stanford University" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={profileForm.control}
+                    name="department"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Major / Department</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g. Computer Science" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={profileForm.control}
+                    name="semester"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Current Semester (Number)</FormLabel>
+                        <FormControl>
+                          <Input type="number" min={1} max={12} placeholder="e.g. 3" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={profileForm.control}
+                    name="dailyGoalMinutes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Daily Study Goal (Minutes)</FormLabel>
+                        <FormControl>
+                          <Input type="number" min={0} placeholder="e.g. 120" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <Button type="submit" disabled={isUpdatingProfile} className="mt-4">
                   {isUpdatingProfile ? "Saving..." : "Save Changes"}
                 </Button>
               </form>
@@ -159,7 +255,7 @@ export default function Profile() {
           <CardHeader>
             <CardTitle>Change Password</CardTitle>
             <CardDescription>
-              Ensure your account is using a long, random password to stay secure.
+              Ensure your account is using a long, random password.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -200,11 +296,11 @@ export default function Profile() {
         </Card>
 
         {/* Danger Zone */}
-        <Card className="md:col-span-2 border-destructive/50">
+        <Card className="border-destructive/50">
           <CardHeader>
             <CardTitle className="text-destructive">Danger Zone</CardTitle>
             <CardDescription>
-              Permanently delete your account and all of your data.
+              Permanently delete your account.
             </CardDescription>
           </CardHeader>
           <CardContent>

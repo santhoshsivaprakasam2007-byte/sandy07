@@ -280,6 +280,24 @@ export default function PomodoroTimer() {
         .eq("id", user.id)
         .single();
 
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("timer_settings")
+        .eq("id", user.id)
+        .single();
+
+      if (profileData?.timer_settings) {
+        setSettings((prev) => {
+          const merged = { ...prev, ...profileData.timer_settings };
+          // If we didn't restore an active timer, update the time based on DB settings
+          if (!restored) {
+            setTimeLeft(merged.focusDuration * 60);
+            setTotalDuration(merged.focusDuration * 60);
+          }
+          return merged;
+        });
+      }
+
       // Fetch today's study sessions
       const today = new Date();
       today.setHours(0, 0, 0, 0);
