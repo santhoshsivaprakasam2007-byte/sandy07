@@ -305,14 +305,14 @@ export default function Planner() {
 
       {/* Empty state */}
       {tasks.length === 0 && !isAdding && (
-        <div className="border-2 border-dashed border-outline-variant rounded-xl p-12 flex flex-col items-center text-center opacity-70">
+        <div className="w-full border-2 border-dashed border-outline-variant rounded-xl p-12 flex flex-col items-center justify-center text-center opacity-70">
           <span className="material-symbols-outlined text-5xl mb-3 text-primary/50">
             event_note
           </span>
           <h3 className="font-semibold text-on-surface mb-2">
             Your planner is empty
           </h3>
-          <p className="text-sm text-on-surface-variant mb-5 max-w-xs">
+          <p className="text-sm text-on-surface-variant mb-5 max-w-sm">
             Create your first study plan to start tracking your progress!
           </p>
           <button
