@@ -94,7 +94,7 @@ export default function Planner() {
       title: formData.title,
     };
 
-    let error;
+    let error: any;
     if (editingTask) {
       const { error: err } = await supabase.from("tasks").update(payload).eq("id", editingTask.id);
       error = err;
@@ -104,7 +104,9 @@ export default function Planner() {
     }
 
     if (error) {
-      console.error("SUPABASE ERROR:", error);
+      console.log("\n\n=== SUPABASE ERROR MESSAGE ===");
+      console.log(error.message);
+      console.log("==============================\n\n");
       toast.error(`Error saving task: ${error.message || "Unknown error"}. Did you run the SQL migration script?`);
     } else {
       toast.success(editingTask ? "Task updated" : "Task created");
