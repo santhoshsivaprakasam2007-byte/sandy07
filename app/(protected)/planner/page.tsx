@@ -23,13 +23,6 @@ export default function Planner() {
   // Form State
   const [formData, setFormData] = useState({
     title: "",
-    subject: "",
-    category: "",
-    priority: "Med Priority",
-    study_goal_minutes: 0,
-    due_date: "",
-    due_time: "",
-    notes: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -61,11 +54,6 @@ export default function Planner() {
 
     // Sort
     result.sort((a, b) => {
-      if (sortBy === "due_date_asc" || sortBy === "due_date_desc") {
-        const da = a.due_date ? new Date(`${a.due_date}T${a.due_time || "23:59:00"}`).getTime() : Infinity;
-        const db = b.due_date ? new Date(`${b.due_date}T${b.due_time || "23:59:00"}`).getTime() : Infinity;
-        return sortBy === "due_date_asc" ? da - db : db - da;
-      }
       if (sortBy === "priority") {
         const pMap: any = { "High Priority": 1, "Med Priority": 2, "Low Priority": 3 };
         return (pMap[a.priority] || 4) - (pMap[b.priority] || 4);
@@ -84,7 +72,7 @@ export default function Planner() {
 
   const openNewTaskModal = () => {
     setEditingTask(null);
-    setFormData({ title: "", subject: "", category: "", priority: "Med Priority", study_goal_minutes: 0, due_date: "", due_time: "", notes: "" });
+    setFormData({ title: "" });
     setIsModalOpen(true);
   };
 
@@ -92,13 +80,6 @@ export default function Planner() {
     setEditingTask(task);
     setFormData({
       title: task.title,
-      subject: task.subject || "",
-      category: task.category || "",
-      priority: task.priority || "Med Priority",
-      study_goal_minutes: task.study_goal_minutes || 0,
-      due_date: task.due_date || "",
-      due_time: task.due_time || "",
-      notes: task.notes || "",
     });
     setIsModalOpen(true);
   };
@@ -111,13 +92,6 @@ export default function Planner() {
     const payload = {
       user_id: userId,
       title: formData.title,
-      subject: formData.subject || null,
-      category: formData.category || null,
-      priority: formData.priority,
-      study_goal_minutes: formData.study_goal_minutes || 0,
-      due_date: formData.due_date || null,
-      due_time: formData.due_time || null,
-      notes: formData.notes || null,
     };
 
     let error;
@@ -210,17 +184,11 @@ export default function Planner() {
             )}
           </div>
 
-          {(task.subject || task.due_date || task.notes) && (
+          {(task.subject || task.notes) && (
             <div className="flex flex-col gap-1 mt-2 mb-3">
               {task.subject && (
                 <div className="flex items-center gap-1.5 text-xs text-on-surface-variant">
                   <span className="material-symbols-outlined text-[14px]">book</span> {task.subject}
-                </div>
-              )}
-              {task.due_date && (
-                <div className="flex items-center gap-1.5 text-xs text-on-surface-variant">
-                  <span className="material-symbols-outlined text-[14px]">event</span>
-                  {new Date(task.due_date).toLocaleDateString()} {task.due_time && `at ${task.due_time}`}
                 </div>
               )}
               {task.notes && (
@@ -320,8 +288,6 @@ export default function Planner() {
               value={sortBy} onChange={e => setSortBy(e.target.value)}
               className="bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm outline-none"
             >
-              <option value="due_date_asc">Due Date (Earliest)</option>
-              <option value="due_date_desc">Due Date (Latest)</option>
               <option value="priority">Priority (High to Low)</option>
               <option value="created_desc">Recently Added</option>
             </select>
@@ -387,54 +353,6 @@ export default function Planner() {
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-on-surface-variant uppercase">Task Title *</label>
                 <Input required autoFocus placeholder="Read Chapter 4..." value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="text-base py-6" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-on-surface-variant uppercase">Subject</label>
-                  <Input placeholder="e.g. History 101" value={formData.subject} onChange={e => setFormData(p => ({ ...p, subject: e.target.value }))} />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-on-surface-variant uppercase">Category</label>
-                  <Input placeholder="e.g. Reading, Exam" value={formData.category} onChange={e => setFormData(p => ({ ...p, category: e.target.value }))} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-on-surface-variant uppercase">Priority</label>
-                  <select value={formData.priority} onChange={e => setFormData(p => ({ ...p, priority: e.target.value }))} className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm outline-none">
-                    <option>High Priority</option>
-                    <option>Med Priority</option>
-                    <option>Low Priority</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-on-surface-variant uppercase">Study Goal (Minutes)</label>
-                  <Input type="number" min={0} placeholder="e.g. 120" value={formData.study_goal_minutes || ""} onChange={e => setFormData(p => ({ ...p, study_goal_minutes: parseInt(e.target.value) || 0 }))} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-on-surface-variant uppercase">Due Date</label>
-                  <Input type="date" value={formData.due_date} onChange={e => setFormData(p => ({ ...p, due_date: e.target.value }))} />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-on-surface-variant uppercase">Due Time</label>
-                  <Input type="time" value={formData.due_time} onChange={e => setFormData(p => ({ ...p, due_time: e.target.value }))} />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-on-surface-variant uppercase">Notes</label>
-                <textarea 
-                  rows={3}
-                  placeholder="Any additional details or context..."
-                  value={formData.notes} 
-                  onChange={e => setFormData(p => ({ ...p, notes: e.target.value }))}
-                  className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm outline-none resize-y"
-                />
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-outline-variant/20">
